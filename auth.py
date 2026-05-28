@@ -5,10 +5,7 @@ import pandas as pd
 from db import fetch_query
 
 # Configure logging for the authentication module
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+
 logger = logging.getLogger(__name__)
 
 def hash_password(password: str) -> str:
