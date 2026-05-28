@@ -4,7 +4,8 @@ import sys
 from typing import Dict, Any
 
 import streamlit as st
-from auth import authenticate_user
+from auth import authenticate_user, hash_password
+from db import fetch_query, execute_query
 
 # Configure logging for the application
 logging.basicConfig(
@@ -37,6 +38,20 @@ def init_session_state() -> None:
     """Initialize essential session state variables."""
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
+        
+        # Auto-initialize a default admin if no users exist (for fresh cloud deployments)
+        try:
+            df_users = fetch_query("SELECT COUNT(user_id) as count FROM users")
+            if not df_users.empty and df_users.iloc[0]['count'] == 0:
+                hashed = hash_password("admin123")
+                execute_query(
+                    "INSERT INTO users (username, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+                    ("superadmin", "superadmin@gmail.com", hashed, "Super Admin")
+                )
+                logger.info("Default superadmin created (superadmin@gmail.com / admin123)")
+        except Exception as e:
+            logger.warning(f"Failed to check/create default admin: {e}")
+            
     if "user" not in st.session_state:
         st.session_state.user = None
     if "current_page" not in st.session_state:
