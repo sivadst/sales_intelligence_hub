@@ -1,12 +1,9 @@
 import os
+import sqlite3
 import logging
 from typing import Optional, Tuple, List
 from contextlib import contextmanager
 import pandas as pd
-import mysql.connector
-from mysql.connector import Error
-from mysql.connector import pooling
-from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(
@@ -15,65 +12,64 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+DB_PATH = "sales_hub.db"
 
-# Global connection pool
-_pool = None
+def init_db():
+    """Initialize the SQLite database with the required schema."""
+    try:
+        if not os.path.exists(DB_PATH):
+            logger.info(f"Database {DB_PATH} does not exist. Initializing schema.")
+            with sqlite3.connect(DB_PATH) as conn:
+                # Enable foreign key support in SQLite
+                conn.execute("PRAGMA foreign_keys = ON;")
+                
+                schema_path = "schema_sqlite.sql"
+                if os.path.exists(schema_path):
+                    with open(schema_path, "r") as f:
+                        schema_sql = f.read()
+                    # Execute script
+                    conn.executescript(schema_sql)
+                    conn.commit()
+                    logger.info("Database initialized successfully.")
+                else:
+                    logger.error(f"Schema file {schema_path} not found.")
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
 
-def get_connection_pool() -> pooling.MySQLConnectionPool:
-    """Initialize and return the global database connection pool."""
-    global _pool
-    if _pool is None:
-        try:
-            pool_name = "sales_hub_pool"
-            pool_size = int(os.getenv("DB_POOL_SIZE", "5"))
-            
-            dbconfig = {
-                "host": os.getenv("DB_HOST", "localhost"),
-                "user": os.getenv("DB_USER", "root"),
-                "password": os.getenv("DB_PASS", ""),
-                "database": os.getenv("DB_NAME", "sales_hub"),
-                "charset": "utf8mb4",
-                "collation": "utf8mb4_unicode_ci",
-            }
-            
-            _pool = pooling.MySQLConnectionPool(
-                pool_name=pool_name,
-                pool_size=pool_size,
-                pool_reset_session=True,
-                **dbconfig
-            )
-            logger.info(f"Database connection pool '{pool_name}' created successfully with size {pool_size}.")
-        except Error as e:
-            logger.critical(f"Failed to create database connection pool: {e}")
-            raise
-    return _pool
+# Initialize the database immediately when module is imported
+init_db()
 
 @contextmanager
 def get_connection():
-    """Context manager for safely acquiring and releasing a connection from the pool."""
-    pool = get_connection_pool()
+    """Context manager for safely acquiring and releasing a connection."""
     conn = None
     try:
-        conn = pool.get_connection()
-        if conn.is_connected():
-            yield conn
-        else:
-            raise Error("Connection acquired from pool is not connected.")
-    except Error as e:
-        logger.error(f"Error getting connection from pool: {e}")
+        conn = sqlite3.connect(DB_PATH)
+        # Force SQLite to enforce foreign keys
+        conn.execute("PRAGMA foreign_keys = ON;")
+        # Allow accessing columns by name
+        conn.row_factory = sqlite3.Row
+        yield conn
+    except sqlite3.Error as e:
+        logger.error(f"Database connection error: {e}")
         raise
     finally:
-        if conn and conn.is_connected():
+        if conn:
             conn.close()
+
+def _convert_query(query: str) -> str:
+    """Convert MySQL placeholders (%s) to SQLite placeholders (?)."""
+    # Replace all occurrences of %s with ?
+    return query.replace("%s", "?")
 
 def fetch_query(query: str, params: Optional[tuple] = None) -> pd.DataFrame:
     """
     Execute a SELECT query and return the results as a pandas DataFrame.
     """
+    query = _convert_query(query)
     try:
         with get_connection() as conn:
-            # Suppress pandas UserWarning about using raw DBAPI connection instead of SQLAlchemy
+            # Using pandas read_sql
             import warnings
             with warnings.catch_warnings():
                 warnings.filterwarnings('ignore', 'User provided connection.*')
@@ -81,13 +77,13 @@ def fetch_query(query: str, params: Optional[tuple] = None) -> pd.DataFrame:
             return df
     except Exception as e:
         logger.error(f"Error fetching data with query: {e}")
-        # Return an empty dataframe to avoid breaking downstream code that expects a DataFrame
         return pd.DataFrame()
 
 def execute_query(query: str, params: Optional[tuple] = None) -> Tuple[bool, str]:
     """
     Execute an INSERT, UPDATE, or DELETE query safely.
     """
+    query = _convert_query(query)
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -95,12 +91,15 @@ def execute_query(query: str, params: Optional[tuple] = None) -> Tuple[bool, str
                 cursor.execute(query, params or ())
                 conn.commit()
                 return True, "Success"
-            except Error as e:
+            except sqlite3.IntegrityError as e:
+                conn.rollback()
+                logger.warning(f"Integrity error (e.g. duplicate entry): {e}")
+                # Translate error message so frontend checks like "Duplicate entry" or "mobile_number" still work 
+                return False, f"Duplicate entry {e} mobile_number"
+            except sqlite3.Error as e:
                 conn.rollback()
                 logger.error(f"Transaction failed, rolled back. Error: {e}")
                 return False, str(e)
-            finally:
-                cursor.close()
     except Exception as e:
         logger.error(f"Failed to execute query: {e}")
         return False, str(e)
@@ -109,6 +108,7 @@ def execute_many(query: str, param_list: List[tuple]) -> Tuple[bool, str]:
     """
     Execute a query multiple times with a list of parameters (e.g., for bulk inserts).
     """
+    query = _convert_query(query)
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -116,12 +116,10 @@ def execute_many(query: str, param_list: List[tuple]) -> Tuple[bool, str]:
                 cursor.executemany(query, param_list)
                 conn.commit()
                 return True, f"Success. {cursor.rowcount} rows affected."
-            except Error as e:
+            except sqlite3.Error as e:
                 conn.rollback()
                 logger.error(f"Bulk execution failed, rolled back. Error: {e}")
                 return False, str(e)
-            finally:
-                cursor.close()
     except Exception as e:
         logger.error(f"Failed to bulk execute query: {e}")
         return False, str(e)
