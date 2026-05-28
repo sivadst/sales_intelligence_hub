@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS customer_sales (
     branch_id INTEGER NOT NULL,
     sale_date DATE NOT NULL,
     customer_name TEXT NOT NULL,
-    mobile_number TEXT UNIQUE NOT NULL,
+    mobile_number TEXT NOT NULL,
     product_name TEXT NOT NULL,
     gross_sales REAL NOT NULL,
     received_amount REAL DEFAULT 0,

@@ -181,14 +181,18 @@ def load_page_module(page_name: str) -> None:
 # --- MAIN APP ENTRY POINT ---
 def main() -> None:
     """Main execution flow for the Streamlit application."""
-    configure_page()
-    init_session_state()
-    
-    if not st.session_state.authenticated:
-        render_login_screen()
-    else:
-        render_sidebar()
-        load_page_module(st.session_state.current_page)
+    try:
+        configure_page()
+        init_session_state()
+        
+        if not st.session_state.authenticated:
+            render_login_screen()
+        else:
+            render_sidebar()
+            load_page_module(st.session_state.current_page)
+    except Exception as e:
+        logger.error(f"Global application error: {e}", exc_info=True)
+        st.error("A critical system error occurred. Please contact the administrator.")
 
 if __name__ == "__main__":
     main()

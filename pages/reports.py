@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import plotly.express as px
 from db import fetch_query
 import logging
 
@@ -83,9 +84,17 @@ def render(user: dict):
     col3.metric("Total Received", f"${df_report['received_amount'].sum():,.2f}")
     col4.metric("Total Pending", f"${df_report['pending_amount'].sum():,.2f}")
 
+    # Visual Analytics
+    st.subheader("Analytics")
+    df_report['sale_date'] = pd.to_datetime(df_report['sale_date'])
+    sales_trend = df_report.groupby(['sale_date', 'branch_name'])['gross_sales'].sum().reset_index()
+    fig = px.bar(sales_trend, x='sale_date', y='gross_sales', color='branch_name', 
+                 title="Daily Gross Sales by Branch", labels={'gross_sales': 'Gross Sales ($)', 'sale_date': 'Date', 'branch_name': 'Branch'})
+    st.plotly_chart(fig, use_container_width=True)
+
     # Display DataGrid
     st.subheader("Detailed Data")
-    st.dataframe(df_report, use_container_width=True)
+    st.dataframe(df_report, use_container_width=True, hide_index=True)
 
     # Export
     st.divider()

@@ -73,7 +73,7 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
             return None
             
         user_record = df.iloc[0]
-        stored_hash = user_record.get('password_hash')
+        stored_hash = str(user_record['password_hash']) if 'password_hash' in user_record else None
         
         if not stored_hash:
             logger.error(f"Authentication failed: Missing password hash for email {email}")

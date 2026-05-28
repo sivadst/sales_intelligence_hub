@@ -80,12 +80,11 @@ def render(user: dict):
                 
                 if success:
                     st.success(f"Successfully added customer {customer_name} and recorded sale.")
+                    st.balloons()
                     logger.info(f"User {user.get('username')} added a new sale for {customer_name}.")
                 else:
-                    if "Duplicate entry" in message and "mobile_number" in message:
-                        st.error("A customer with this mobile number already exists.")
-                    else:
-                        st.error(f"Failed to add customer: {message}")
+                    st.error(f"Failed to add customer: {message}")
+                    logger.warning(f"Sale insertion failed: {message}")
             except Exception as e:
                 st.error(f"An unexpected error occurred: {e}")
                 logger.error(f"Add customer exception: {e}")

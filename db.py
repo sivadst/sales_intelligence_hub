@@ -12,7 +12,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_PATH = "sales_hub.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "sales_hub.db")
 
 def init_db():
     """Initialize the SQLite database with the required schema."""
@@ -23,7 +24,7 @@ def init_db():
                 # Enable foreign key support in SQLite
                 conn.execute("PRAGMA foreign_keys = ON;")
                 
-                schema_path = "schema_sqlite.sql"
+                schema_path = os.path.join(BASE_DIR, "schema_sqlite.sql")
                 if os.path.exists(schema_path):
                     with open(schema_path, "r") as f:
                         schema_sql = f.read()
@@ -93,9 +94,8 @@ def execute_query(query: str, params: Optional[tuple] = None) -> Tuple[bool, str
                 return True, "Success"
             except sqlite3.IntegrityError as e:
                 conn.rollback()
-                logger.warning(f"Integrity error (e.g. duplicate entry): {e}")
-                # Translate error message so frontend checks like "Duplicate entry" or "mobile_number" still work 
-                return False, f"Duplicate entry {e} mobile_number"
+                logger.warning(f"Integrity error: {e}")
+                return False, f"Integrity Error: {e}"
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error(f"Transaction failed, rolled back. Error: {e}")

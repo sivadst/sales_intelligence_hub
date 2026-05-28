@@ -59,10 +59,15 @@ def render(user: dict):
                 st.write(f"**Gross Sales:** ${row['gross_sales']:,.2f}")
                 st.write(f"**Received:** ${row['received_amount']:,.2f}")
                 st.write(f"**Pending:** ${row['pending_amount']:,.2f}")
+                
+                # Progress bar for payment completion
+                if row['gross_sales'] > 0:
+                    progress = min(row['received_amount'] / row['gross_sales'], 1.0)
+                    st.progress(progress, text=f"Payment Progress: {progress*100:.1f}%")
 
             # Fetch payment history for this sale
             payments_query = """
-                SELECT payment_date, amount_paid, payment_method 
+                SELECT payment_date as 'Date', amount_paid as 'Amount Paid ($)', payment_method as 'Method'
                 FROM payment_splits 
                 WHERE sale_id = %s 
                 ORDER BY payment_date DESC
